@@ -1,17 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
+
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
-    <!-- Internet -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
-
-    <!-- Android 13+ -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <!-- Shizuku -->
-    <uses-permission
-        android:name="moe.shizuku.manager.permission.API_V23" />
+    <uses-permission android:name="moe.shizuku.manager.permission.API_V23" />
 
     <application
         android:name=".M3KHelperApplication"
@@ -36,7 +33,6 @@
             android:multiprocess="false"
             android:permission="android.permission.INTERACT_ACROSS_USERS_FULL" />
 
-        <!-- Main Activity -->
         <activity
             android:name=".ui.MainActivity"
             android:exported="true"
@@ -50,9 +46,9 @@
             <meta-data
                 android:name="android.app.lib_name"
                 android:value="" />
+
         </activity>
 
-        <!-- Quick Settings: Windows -->
         <service
             android:name=".qstiles.QuickBootTile"
             android:exported="true"
@@ -63,9 +59,9 @@
             <intent-filter>
                 <action android:name="android.service.quicksettings.action.QS_TILE" />
             </intent-filter>
+
         </service>
 
-        <!-- Quick Settings: Mount Windows -->
         <service
             android:name=".qstiles.MountTile"
             android:exported="true"
@@ -76,6 +72,7 @@
             <intent-filter>
                 <action android:name="android.service.quicksettings.action.QS_TILE" />
             </intent-filter>
+
         </service>
 
     </application>
