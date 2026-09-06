@@ -9,12 +9,17 @@ plugins {
 
 android {
     namespace = "com.remtrik.m3khelper"
-    compileSdk = 37
+
+    // Android 16
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.remtrik.m3khelper"
 
+        // Android 10+
         minSdk = 29
+
+        // Android 16
         targetSdk = 36
 
         versionCode = 68
@@ -24,6 +29,7 @@ android {
             "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    // Galaxy A07 4G = ARM64
     splits {
         abi {
             isEnable = true
@@ -31,16 +37,20 @@ android {
             reset()
 
             include(
-                "arm64-v8a",
-                "x86_64"
+                "arm64-v8a"
             )
         }
     }
 
     buildTypes {
+        debug {
+            isMinifyEnabled = false
+            isShrinkResources = false
+        }
+
         release {
-            isShrinkResources = true
             isMinifyEnabled = true
+            isShrinkResources = true
 
             proguardFiles(
                 getDefaultProguardFile(
@@ -101,23 +111,25 @@ android {
 
     androidComponents {
         onVariants { variant ->
+
             variant.outputs.forEach { output ->
 
-                val abi = output.filters.find {
-                    it.filterType ==
-                        com.android.build.api.variant
-                            .FilterConfiguration
-                            .FilterType
-                            .ABI
-                }?.identifier
+                val abi = output.filters
+                    .find {
+                        it.filterType ==
+                            com.android.build.api.variant
+                                .FilterConfiguration
+                                .FilterType
+                                .ABI
+                    }
+                    ?.identifier
 
-                output.outputFileName.set(
+                output.outputFileName =
                     "M3K_Helper_v" +
                         "${defaultConfig.versionName}_" +
                         "${defaultConfig.versionCode}-" +
                         "${variant.name}-" +
                         "${abi ?: "all"}.apk"
-                )
             }
         }
     }
@@ -141,9 +153,9 @@ ksp {
 
 dependencies {
 
-    // =========================
+    // ========================================
     // AndroidX / Compose
-    // =========================
+    // ========================================
 
     implementation(
         libs.androidx.activity.compose
@@ -177,9 +189,10 @@ dependencies {
         libs.androidx.lifecycle.viewmodel.compose
     )
 
-    // =========================
+
+    // ========================================
     // Navigation
-    // =========================
+    // ========================================
 
     implementation(
         libs.compose.destinations.core
@@ -189,9 +202,10 @@ dependencies {
         libs.compose.destinations.ksp
     )
 
-    // =========================
+
+    // ========================================
     // ROOT / LIBSU
-    // =========================
+    // ========================================
 
     implementation(
         libs.com.github.topjohnwu.libsu.core
@@ -205,9 +219,10 @@ dependencies {
         libs.com.github.topjohnwu.libsu.nio
     )
 
-    // =========================
+
+    // ========================================
     // SHIZUKU
-    // =========================
+    // ========================================
 
     implementation(
         "dev.rikka.shizuku:api:13.1.5"
@@ -217,17 +232,19 @@ dependencies {
         "dev.rikka.shizuku:provider:13.1.5"
     )
 
-    // =========================
+
+    // ========================================
     // Kotlin Coroutines
-    // =========================
+    // ========================================
 
     implementation(
         libs.kotlinx.coroutines.core
     )
 
-    // =========================
+
+    // ========================================
     // Material
-    // =========================
+    // ========================================
 
     implementation(
         libs.material
@@ -237,9 +254,10 @@ dependencies {
         libs.materialKolor
     )
 
-    // =========================
+
+    // ========================================
     // OkHttp
-    // =========================
+    // ========================================
 
     implementation(
         platform(libs.okhttp.bom)
