@@ -38,9 +38,7 @@ android {
     }
 
     buildTypes {
-
         release {
-
             isShrinkResources = true
             isMinifyEnabled = true
 
@@ -71,15 +69,11 @@ android {
     }
 
     compileOptions {
-        sourceCompatibility =
-            JavaVersion.VERSION_21
-
-        targetCompatibility =
-            JavaVersion.VERSION_21
+        sourceCompatibility = JavaVersion.VERSION_21
+        targetCompatibility = JavaVersion.VERSION_21
     }
 
     lint {
-
         disable += listOf(
             "MissingTranslation",
             "TypographyFractions",
@@ -94,38 +88,28 @@ android {
     }
 
     packaging {
-
         jniLibs {
             useLegacyPackaging = false
         }
 
         resources {
-
-            excludes +=
-                "META-INF/*.version"
-
-            excludes +=
-                "DebugProbesKt.bin"
-
-            excludes +=
-                "kotlin-tooling-metadata.json"
+            excludes += "META-INF/*.version"
+            excludes += "DebugProbesKt.bin"
+            excludes += "kotlin-tooling-metadata.json"
         }
     }
 
     androidComponents {
-
         onVariants { variant ->
-
             variant.outputs.forEach { output ->
 
-                val abi =
-                    output.filters.find {
-                        it.filterType ==
-                            com.android.build.api.variant
-                                .FilterConfiguration
-                                .FilterType
-                                .ABI
-                    }?.identifier
+                val abi = output.filters.find {
+                    it.filterType ==
+                        com.android.build.api.variant
+                            .FilterConfiguration
+                            .FilterType
+                            .ABI
+                }?.identifier
 
                 output.outputFileName.set(
                     "M3K_Helper_v" +
@@ -206,7 +190,7 @@ dependencies {
     )
 
     // =========================
-    // MAGISK / ROOT
+    // ROOT / LIBSU
     // =========================
 
     implementation(
@@ -234,7 +218,7 @@ dependencies {
     )
 
     // =========================
-    // Kotlin
+    // Kotlin Coroutines
     // =========================
 
     implementation(
@@ -265,58 +249,3 @@ dependencies {
         libs.okhttp
     )
 }
-
-A API e o provider são módulos separados no projeto oficial, e a documentação demonstra justamente a inclusão de "dev.rikka.shizuku:api" e "dev.rikka.shizuku:provider".
-
----
-
-⚠️ O ponto que você não deve ignorar
-
-Com esses três arquivos, o aplicativo reconhece e autoriza Shizuku, mas isso não converte automaticamente seu código existente de root para Shizuku.
-
-Por exemplo, se em algum outro arquivo você possui:
-
-Shell.cmd("mount ...").exec()
-
-ou:
-
-Shell.su("settings put ...").exec()
-
-essas chamadas continuam sendo LibSU/root.
-
-Para realmente fazer o M3K Helper ser:
-
-                 M3K Helper
-                     │
-          ┌──────────┴──────────┐
-          │                     │
-       ROOT?                 ROOT não?
-          │                     │
-         SIM                 Shizuku?
-          │                     │
-        LibSU               SIM → Shizuku
-                                │
-                              NÃO
-                                │
-                         sem privilégios
-
-precisamos criar uma camada, por exemplo:
-
-PrivilegedShell.exec(command)
-
-que escolha automaticamente:
-
-LibSU → se Magisk/root estiver disponível
-
-Shizuku → se root não estiver disponível
-
-erro → se nenhum dos dois estiver disponível
-
-Essa é a parte que realmente permitirá substituir Magisk por Shizuku nas operações do M3K Helper. O Shizuku também não fornece poderes equivalentes ao root quando iniciado via ADB; as permissões são diferentes e algumas operações que funcionam com root podem ser recusadas pelo Shizuku.
-
-Fontes oficiais
-
-- "Shizuku API — GitHub oficial" (https://reference-url-citation.invalid/6)
-- "Shizuku — GitHub oficial" (https://reference-url-citation.invalid/7)
-
-Se o objetivo é realmente eliminar a dependência de Magisk para as funções do M3K Helper, o próximo arquivo que eu modificaria é justamente a camada que hoje chama "Shell.su()"/"Shell.cmd()": nela podemos implementar o backend Root + Shizuku, em vez de apenas colocar o botão de autorização.
