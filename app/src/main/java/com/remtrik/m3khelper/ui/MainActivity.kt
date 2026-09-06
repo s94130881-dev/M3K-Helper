@@ -3,7 +3,6 @@ package com.remtrik.m3khelper.ui
 import android.annotation.SuppressLint
 import android.content.pm.ActivityInfo
 import android.content.pm.PackageManager
-import android.content.res.Configuration
 import android.os.Build
 import android.os.Bundle
 
@@ -11,43 +10,18 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 
-import androidx.compose.animation.AnimatedContentTransitionScope
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.EnterTransition
-import androidx.compose.animation.ExitTransition
-import androidx.compose.animation.slideInHorizontally
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutHorizontally
-import androidx.compose.animation.slideOutVertically
-
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.WindowInsetsSides
-import androidx.compose.foundation.layout.calculateBottomPadding
-import androidx.compose.foundation.layout.displayCutout
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.systemBars
-import androidx.compose.foundation.layout.union
-import androidx.compose.foundation.layout.width
 
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
-import androidx.compose.material3.NavigationRail
-import androidx.compose.material3.NavigationRailItem
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.Icon
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -57,50 +31,20 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalConfiguration
-import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
-
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
-
-import androidx.navigation.NavBackStackEntry
-import androidx.navigation.NavHostController
-import androidx.navigation.compose.rememberNavController
 
 import com.remtrik.m3khelper.BuildConfig
 import com.remtrik.m3khelper.prefs
 
 import com.remtrik.m3khelper.ui.component.NoRoot
-import com.remtrik.m3khelper.ui.component.UnknownDevice
-import com.remtrik.m3khelper.ui.component.UpdateDialog
 import com.remtrik.m3khelper.ui.theme.M3KHelperTheme
 
-import com.remtrik.m3khelper.util.collapseTransition
-import com.remtrik.m3khelper.util.expandTransition
-import com.remtrik.m3khelper.util.fadeEnterTransition
-import com.remtrik.m3khelper.util.fadeExitTransition
-import com.remtrik.m3khelper.util.funcs.Download.checkNewVersion
-import com.remtrik.m3khelper.util.funcs.LatestVersionInfo
-import com.remtrik.m3khelper.util.slideFromRightEnterTransition
-import com.remtrik.m3khelper.util.slideToLeftExitTransition
-import com.remtrik.m3khelper.util.slideToRightExitTransition
-import com.remtrik.m3khelper.util.variables.FontSize
-import com.remtrik.m3khelper.util.variables.LineHeight
-import com.remtrik.m3khelper.util.variables.PaddingValue
 import com.remtrik.m3khelper.util.variables.device
 import com.remtrik.m3khelper.util.variables.sdp
-import com.remtrik.m3khelper.util.variables.showWarningCard
 import com.remtrik.m3khelper.util.variables.ssp
 
 import com.ramcosta.composedestinations.DestinationsNavHost
-import com.ramcosta.composedestinations.animations.NavHostAnimatedDestinationStyle
 import com.ramcosta.composedestinations.generated.NavGraphs
-import com.ramcosta.composedestinations.generated.destinations.LinksScreenDestination
-import com.ramcosta.composedestinations.generated.destinations.SettingsScreenDestination
-import com.ramcosta.composedestinations.generated.destinations.ThemeEngineScreenDestination
-import com.ramcosta.composedestinations.navigation.DestinationsNavigator
-import com.ramcosta.composedestinations.utils.isRouteOnBackStackAsState
-import com.ramcosta.composedestinations.utils.rememberDestinationsNavigator
 
 import com.topjohnwu.superuser.Shell
 
@@ -134,15 +78,14 @@ class MainActivity : ComponentActivity() {
 
         enableEdgeToEdge()
 
-        window.isNavigationBarContrastEnforced = false
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            window.isNavigationBarContrastEnforced = false
+        }
 
         requestedOrientation = resolveOrientation()
 
         setContent {
             M3KHelperTheme {
-
-                InitDimens()
-
                 PrivilegedAccessContent(
                     onRequestShizuku = {
                         requestShizukuPermission()
@@ -162,7 +105,14 @@ class MainActivity : ComponentActivity() {
 
     private fun requestShizukuPermission() {
 
-        if (Shizuku.isPreV11()) {
+        val running =
+            try {
+                Shizuku.pingBinder()
+            } catch (_: Throwable) {
+                false
+            }
+
+        if (!running) {
             return
         }
 
@@ -175,17 +125,6 @@ class MainActivity : ComponentActivity() {
             }
 
         if (granted) {
-            return
-        }
-
-        val canRequest =
-            try {
-                !Shizuku.shouldShowRequestPermissionRationale()
-            } catch (_: Throwable) {
-                true
-            }
-
-        if (!canRequest) {
             return
         }
 
@@ -298,6 +237,15 @@ private fun PrivilegedAccessContent(
 }
 
 @Composable
+private fun M3KRootContent() {
+
+    DestinationsNavHost(
+        navGraph = NavGraphs.root,
+        modifier = Modifier.fillMaxSize()
+    )
+}
+
+@Composable
 private fun ShizukuPermissionScreen(
     onRequestPermission: () -> Unit
 ) {
@@ -339,9 +287,11 @@ private fun ShizukuPermissionScreen(
 
             Button(
                 onClick = onRequestPermission,
-                modifier = Modifier.fillMaxSize()
+                modifier = Modifier.fillMaxWidth()
             ) {
-                Text("CONCEDER PERMISSÃO")
+                Text(
+                    text = "CONCEDER PERMISSÃO"
+                )
             }
         }
     }
