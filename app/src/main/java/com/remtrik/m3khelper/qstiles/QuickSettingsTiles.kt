@@ -42,12 +42,13 @@ abstract class CommonTileService : TileService() {
     }
 }
 
-class MountTile : CommonTileService() { // more than just a PoC
+class MountTile : CommonTileService() {
     private val supported: Boolean
         get() = !firstBoot && !device.savedDeviceCard.value.noMount
 
     override fun onStartListening() {
         super.onStartListening()
+
         if (!supported) {
             disableTile(R.string.qs_unsupported)
             return
@@ -59,6 +60,7 @@ class MountTile : CommonTileService() { // more than just a PoC
             } else {
                 enableTile(R.string.umnt_question)
             }
+
             qsTile.updateTile()
         }
     }
@@ -72,13 +74,13 @@ class MountTile : CommonTileService() { // more than just a PoC
             } else {
                 commandHandler.umountWindows()
             }
+
             onStartListening()
         }
     }
-
 }
 
-class QuickBootTile : CommonTileService() { // more than just a PoC
+class QuickBootTile : CommonTileService() {
     private val supported: Boolean
         get() = !firstBoot && !device.savedDeviceCard.value.noFlash
 
@@ -87,6 +89,7 @@ class QuickBootTile : CommonTileService() { // more than just a PoC
 
     override fun onStartListening() {
         super.onStartListening()
+
         when {
             !supported -> disableTile(R.string.qs_unsupported)
             uefiPath == null -> disableTile(R.string.uefi_not_found_title)
@@ -97,6 +100,7 @@ class QuickBootTile : CommonTileService() { // more than just a PoC
     @RequiresPermission(Manifest.permission.POST_NOTIFICATIONS)
     override fun onClick() {
         super.onClick()
+
         when {
             uefiPath == null -> {
                 disableTile(R.string.uefi_not_found_title)
@@ -104,9 +108,8 @@ class QuickBootTile : CommonTileService() { // more than just a PoC
             }
 
             else -> serviceScope.launch {
-                commandHandler.quickBoot(uefiPath ?: return@launch)
+                commandHandler.quickBoot()
             }
         }
     }
-
 }
