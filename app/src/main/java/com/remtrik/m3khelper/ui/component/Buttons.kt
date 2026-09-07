@@ -49,6 +49,7 @@ import com.remtrik.m3khelper.R.string
 import com.remtrik.m3khelper.util.funcs.BootBackupState
 import com.remtrik.m3khelper.util.funcs.ErrorType
 import com.remtrik.m3khelper.util.funcs.MountStatus
+import com.remtrik.m3khelper.util.variables.CommandError
 import com.remtrik.m3khelper.util.variables.FontSize
 import com.remtrik.m3khelper.util.variables.LineHeight
 import com.remtrik.m3khelper.util.variables.PaddingValue
@@ -57,7 +58,6 @@ import com.remtrik.m3khelper.util.variables.commandHandler
 import com.remtrik.m3khelper.util.variables.device
 import com.remtrik.m3khelper.util.variables.dynamicVars
 import com.remtrik.m3khelper.util.variables.sdp
-import com.remtrik.m3khelper.util.variables.CommandError
 import kotlinx.coroutines.launch
 
 @Composable
@@ -110,7 +110,7 @@ fun LinkButton(
         },
         modifier = Modifier
             .height(105.sdp())
-            .fillMaxWidth(),
+            .fillMaxWidth()
     ) {
         Row(
             modifier = Modifier
@@ -120,15 +120,20 @@ fun LinkButton(
             horizontalArrangement = Arrangement.spacedBy(5.sdp())
         ) {
             icon?.let {
-                IconItem(icon = it, modifier = Modifier.size(40.sdp()))
+                IconItem(
+                    icon = it,
+                    modifier = Modifier.size(40.sdp())
+                )
             }
+
             Column {
                 Text(
                     text = title,
                     fontWeight = FontWeight.Bold,
                     fontSize = FontSize,
-                    lineHeight = LineHeight,
+                    lineHeight = LineHeight
                 )
+
                 if (!subtitle.isNullOrBlank()) {
                     Text(
                         text = subtitle,
@@ -145,22 +150,26 @@ fun LinkButton(
 fun BackupButton() {
     var showDialog by remember { mutableStateOf(false) }
     var showSpinner by remember { mutableStateOf(false) }
+
     val scope = rememberCoroutineScope()
     val currentDeviceCard by device.currentDeviceCard.collectAsStateWithLifecycle()
 
     ElevatedCard(
-        onClick = { showDialog = true },
+        onClick = {
+            showDialog = true
+        },
         modifier = Modifier
             .height(105.sdp())
-            .fillMaxWidth(),
+            .fillMaxWidth()
     ) {
         if (showSpinner) {
             StatusDialog(
                 icon = painterResource(id = ic_backup),
                 title = string.please_wait,
-                showDialog = showSpinner,
+                showDialog = showSpinner
             )
         }
+
         if (showDialog) {
             AlertDialog(
                 icon = {
@@ -181,7 +190,9 @@ fun BackupButton() {
                         lineHeight = LineHeight
                     )
                 },
-                onDismissRequest = { showDialog = false },
+                onDismissRequest = {
+                    showDialog = false
+                },
                 dismissButton = {
                     Row(
                         modifier = Modifier.align(Alignment.CenterHorizontally),
@@ -192,23 +203,29 @@ fun BackupButton() {
                                 scope.launch {
                                     showDialog = false
                                     showSpinner = true
-                                    val result =
-                                        commandHandler.dumpBoot(
-                                            ErrorType.QUICKBOOT_ERROR,
-                                            BootBackupState.ANDROID
-                                        )
+
+                                    val result = commandHandler.dumpBoot(
+                                        ErrorType.QUICKBOOT_ERROR,
+                                        BootBackupState.ANDROID
+                                    )
+
                                     if (!result.isSuccess) {
                                         commandError.value = CommandError(
                                             type = ErrorType.BOOTBACKUP_ERROR,
-                                            title = M3KApp.getString(string.backupboot_error),
-                                            message = result.error.firstOrNull()
-                                                ?: result.output.firstOrNull() ?: M3KApp.getString(
-                                                    string.unknown_error
-                                                )
+                                            title = M3KApp.getString(
+                                                string.backupboot_error
+                                            ),
+                                            message =
+                                                result.error.firstOrNull()
+                                                    ?: result.output.firstOrNull()
+                                                    ?: M3KApp.getString(
+                                                        string.unknown_error
+                                                    )
                                         )
                                     } else {
                                         dynamicVars()
                                     }
+
                                     showSpinner = false
                                 }
                             },
@@ -222,26 +239,34 @@ fun BackupButton() {
                                 )
                             }
                         )
+
                         if (!currentDeviceCard.noMount) {
                             AssistChip(
                                 onClick = {
                                     scope.launch {
                                         showDialog = false
                                         showSpinner = true
-                                        val result =
-                                            commandHandler.dumpBoot(
-                                                ErrorType.BOOTBACKUP_ERROR,
-                                                BootBackupState.WINDOWS
-                                            )
+
+                                        val result = commandHandler.dumpBoot(
+                                            ErrorType.BOOTBACKUP_ERROR,
+                                            BootBackupState.WINDOWS
+                                        )
+
                                         if (!result.isSuccess) {
                                             commandError.value = CommandError(
                                                 type = ErrorType.BOOTBACKUP_ERROR,
-                                                title = M3KApp.getString(string.backupboot_error),
-                                                message = result.error.firstOrNull()
-                                                    ?: result.output.firstOrNull()
-                                                    ?: M3KApp.getString(string.unknown_error)
+                                                title = M3KApp.getString(
+                                                    string.backupboot_error
+                                                ),
+                                                message =
+                                                    result.error.firstOrNull()
+                                                        ?: result.output.firstOrNull()
+                                                        ?: M3KApp.getString(
+                                                            string.unknown_error
+                                                        )
                                             )
                                         }
+
                                         showSpinner = false
                                     }
                                 },
@@ -256,8 +281,11 @@ fun BackupButton() {
                                 }
                             )
                         }
+
                         AssistChip(
-                            onClick = { showDialog = false },
+                            onClick = {
+                                showDialog = false
+                            },
                             label = {
                                 Text(
                                     modifier = Modifier.padding(
@@ -270,9 +298,10 @@ fun BackupButton() {
                         )
                     }
                 },
-                confirmButton = { }
+                confirmButton = {}
             )
         }
+
         Row(
             modifier = Modifier
                 .fillMaxHeight()
@@ -280,16 +309,21 @@ fun BackupButton() {
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(5.sdp())
         ) {
-            IconItem(icon = ic_backup, modifier = Modifier.size(40.sdp()))
+            IconItem(
+                icon = ic_backup,
+                modifier = Modifier.size(40.sdp())
+            )
+
             Column {
                 Text(
-                    stringResource(string.backup_boot_title),
+                    text = stringResource(string.backup_boot_title),
                     fontWeight = FontWeight.Bold,
                     fontSize = FontSize,
-                    lineHeight = LineHeight,
+                    lineHeight = LineHeight
                 )
+
                 Text(
-                    stringResource(string.backup_boot_subtitle),
+                    text = stringResource(string.backup_boot_subtitle),
                     lineHeight = LineHeight,
                     fontSize = FontSize
                 )
@@ -301,7 +335,9 @@ fun BackupButton() {
 @Composable
 fun MountButton() {
     var showDialog by remember { mutableStateOf(false) }
-    var isMounted by remember { mutableStateOf(MountStatus.NOT_MOUNTED) }
+    var isMounted by remember {
+        mutableStateOf(MountStatus.NOT_MOUNTED)
+    }
 
     LaunchedEffect(Unit) {
         isMounted = commandHandler.isMounted()
@@ -310,10 +346,12 @@ fun MountButton() {
     val scope = rememberCoroutineScope()
 
     ElevatedCard(
-        onClick = { showDialog = true },
+        onClick = {
+            showDialog = true
+        },
         modifier = Modifier
             .height(105.sdp())
-            .fillMaxWidth(),
+            .fillMaxWidth()
     ) {
         if (showDialog) {
             if (isMounted == MountStatus.MOUNTED) {
@@ -322,19 +360,28 @@ fun MountButton() {
                     title = null,
                     description = stringResource(string.umnt_question),
                     showDialog = showDialog,
-                    onDismiss = { showDialog = false },
+                    onDismiss = {
+                        showDialog = false
+                    },
                     onConfirm = {
                         scope.launch {
                             val result = commandHandler.umountWindows()
+
                             if (!result.isSuccess) {
                                 commandError.value = CommandError(
                                     type = ErrorType.MOUNT_ERROR,
-                                    title = M3KApp.getString(string.mnt_error_title),
-                                    message = result.error.firstOrNull()
-                                        ?: result.output.firstOrNull()
-                                        ?: M3KApp.getString(string.unknown_error)
+                                    title = M3KApp.getString(
+                                        string.mnt_error_title
+                                    ),
+                                    message =
+                                        result.error.firstOrNull()
+                                            ?: result.output.firstOrNull()
+                                            ?: M3KApp.getString(
+                                                string.unknown_error
+                                            )
                                 )
                             }
+
                             showDialog = false
                             isMounted = commandHandler.isMounted()
                         }
@@ -346,19 +393,28 @@ fun MountButton() {
                     title = null,
                     description = stringResource(string.mnt_question),
                     showDialog = showDialog,
-                    onDismiss = { showDialog = false },
+                    onDismiss = {
+                        showDialog = false
+                    },
                     onConfirm = {
                         scope.launch {
                             val result = commandHandler.mountWindows()
+
                             if (!result.isSuccess) {
                                 commandError.value = CommandError(
                                     type = ErrorType.MOUNT_ERROR,
-                                    title = M3KApp.getString(string.mnt_error_title),
-                                    message = result.error.firstOrNull()
-                                        ?: result.output.firstOrNull()
-                                        ?: M3KApp.getString(string.unknown_error)
+                                    title = M3KApp.getString(
+                                        string.mnt_error_title
+                                    ),
+                                    message =
+                                        result.error.firstOrNull()
+                                            ?: result.output.firstOrNull()
+                                            ?: M3KApp.getString(
+                                                string.unknown_error
+                                            )
                                 )
                             }
+
                             showDialog = false
                             isMounted = commandHandler.isMounted()
                         }
@@ -366,6 +422,7 @@ fun MountButton() {
                 )
             }
         }
+
         Row(
             modifier = Modifier
                 .fillMaxHeight()
@@ -374,24 +431,30 @@ fun MountButton() {
             horizontalArrangement = Arrangement.spacedBy(5.sdp())
         ) {
             IconItem(
-                icon = if (isMounted == MountStatus.MOUNTED) ic_folder else ic_folder_open,
+                icon = if (isMounted == MountStatus.MOUNTED) {
+                    ic_folder
+                } else {
+                    ic_folder_open
+                },
                 modifier = Modifier.size(40.sdp())
             )
+
             Column {
-                val mounted: Int =
-                    if (isMounted == MountStatus.MOUNTED) {
-                        string.umnt_title
-                    } else {
-                        string.mnt_title
-                    }
+                val mounted = if (isMounted == MountStatus.MOUNTED) {
+                    string.umnt_title
+                } else {
+                    string.mnt_title
+                }
+
                 Text(
-                    stringResource(mounted),
+                    text = stringResource(mounted),
                     fontWeight = FontWeight.Bold,
                     lineHeight = LineHeight,
                     fontSize = FontSize
                 )
+
                 Text(
-                    stringResource(string.mnt_subtitle),
+                    text = stringResource(string.mnt_subtitle),
                     lineHeight = LineHeight,
                     fontSize = FontSize
                 )
@@ -404,13 +467,16 @@ fun MountButton() {
 fun QuickBootButton() {
     var showDialog by remember { mutableStateOf(false) }
     var showSpinner by remember { mutableStateOf(false) }
+
     val scope = rememberCoroutineScope()
     val uefiCards by device.uefiCards.collectAsStateWithLifecycle()
     val hasUefi = uefiCards.isNotEmpty()
     val currentDeviceCard by device.currentDeviceCard.collectAsStateWithLifecycle()
 
     ElevatedCard(
-        onClick = { showDialog = true },
+        onClick = {
+            showDialog = true
+        },
         modifier = Modifier
             .height(105.sdp())
             .fillMaxWidth(),
@@ -420,9 +486,10 @@ fun QuickBootButton() {
             StatusDialog(
                 icon = painterResource(id = ic_windows),
                 title = string.please_wait,
-                showDialog = showSpinner,
+                showDialog = showSpinner
             )
         }
+
         if (showDialog) {
             AlertDialog(
                 icon = {
@@ -442,21 +509,25 @@ fun QuickBootButton() {
                         fontSize = FontSize
                     )
                 },
-                onDismissRequest = { showDialog = false },
+                onDismissRequest = {
+                    showDialog = false
+                },
                 dismissButton = {
                     Row(
-                        Modifier.align(Alignment.CenterHorizontally),
+                        modifier = Modifier.align(
+                            Alignment.CenterHorizontally
+                        ),
                         horizontalArrangement = Arrangement.spacedBy(10.sdp())
                     ) {
-                        uefiCards.forEach {
+                        uefiCards.forEach { card ->
                             AssistChip(
                                 onClick = {
                                     scope.launch {
                                         showDialog = false
                                         showSpinner = true
-                                        commandHandler.quickBoot(
-                                            it.uefiPath
-                                        )
+
+                                        commandHandler.quickBoot()
+
                                         showSpinner = false
                                     }
                                 },
@@ -466,7 +537,7 @@ fun QuickBootButton() {
                                             vertical = 2.sdp()
                                         ),
                                         text = stringResource(
-                                            when (it.uefiType) {
+                                            when (card.uefiType) {
                                                 120 -> string.quickboot_question120
                                                 90 -> string.quickboot_question90
                                                 60 -> string.quickboot_question60
@@ -478,8 +549,11 @@ fun QuickBootButton() {
                                 }
                             )
                         }
+
                         AssistChip(
-                            onClick = { showDialog = false },
+                            onClick = {
+                                showDialog = false
+                            },
                             label = {
                                 Text(
                                     modifier = Modifier.padding(
@@ -492,9 +566,10 @@ fun QuickBootButton() {
                         )
                     }
                 },
-                confirmButton = { }
+                confirmButton = {}
             )
         }
+
         Row(
             modifier = Modifier
                 .fillMaxHeight()
@@ -502,28 +577,36 @@ fun QuickBootButton() {
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(5.sdp())
         ) {
-            IconItem(icon = ic_windows, modifier = Modifier.size(40.sdp()))
+            IconItem(
+                icon = ic_windows,
+                modifier = Modifier.size(40.sdp())
+            )
+
             Column {
                 val title: Int
                 val subtitle: Int
+
                 if (hasUefi) {
                     title = string.quickboot_title
+
                     subtitle = when (currentDeviceCard.noModem) {
                         true -> string.quickboot_subtitle_nomodem
-                        else -> string.quickboot_subtitle
+                        false -> string.quickboot_subtitle
                     }
                 } else {
                     title = string.uefi_not_found_title
                     subtitle = string.uefi_not_found_subtitle
                 }
+
                 Text(
-                    stringResource(title),
+                    text = stringResource(title),
                     fontWeight = FontWeight.Bold,
                     lineHeight = LineHeight,
                     fontSize = FontSize
                 )
+
                 Text(
-                    stringResource(subtitle),
+                    text = stringResource(subtitle),
                     lineHeight = LineHeight,
                     fontSize = FontSize
                 )
@@ -541,18 +624,22 @@ fun SwitchItem(
     enabled: Boolean = true,
     onCheckedChange: (Boolean) -> Unit
 ) {
-    val interactionSource = remember { MutableInteractionSource() }
+    val interactionSource = remember {
+        MutableInteractionSource()
+    }
+
     Card(
-        colors = CardDefaults.cardColors(containerColor = Color.Transparent),
-        modifier = Modifier
-            .toggleable(
-                value = checked,
-                interactionSource = interactionSource,
-                role = Role.Switch,
-                enabled = enabled,
-                indication = LocalIndication.current,
-                onValueChange = onCheckedChange
-            ),
+        colors = CardDefaults.cardColors(
+            containerColor = Color.Transparent
+        ),
+        modifier = Modifier.toggleable(
+            value = checked,
+            interactionSource = interactionSource,
+            role = Role.Switch,
+            enabled = enabled,
+            indication = LocalIndication.current,
+            onValueChange = onCheckedChange
+        )
     ) {
         Row(
             modifier = Modifier
@@ -561,7 +648,9 @@ fun SwitchItem(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(5.sdp())
         ) {
-            Column(Modifier.padding(end = 10.sdp())) {
+            Column(
+                modifier = Modifier.padding(end = 10.sdp())
+            ) {
                 IconItem(
                     icon = icon,
                     modifier = Modifier
@@ -569,22 +658,24 @@ fun SwitchItem(
                         .align(Alignment.CenterHorizontally)
                 )
             }
+
             Column(
-                Modifier
+                modifier = Modifier
                     .weight(1f)
                     .fillMaxWidth()
             ) {
                 title?.let {
                     Text(
-                        text = title,
+                        text = it,
                         fontSize = FontSize,
                         lineHeight = LineHeight,
                         fontWeight = FontWeight.Medium
                     )
                 }
+
                 summary?.let {
                     Text(
-                        text = summary,
+                        text = it,
                         fontSize = FontSize,
                         lineHeight = LineHeight,
                         style = MaterialTheme.typography.bodySmall,
@@ -592,6 +683,7 @@ fun SwitchItem(
                     )
                 }
             }
+
             Column {
                 Switch(
                     checked = checked,
@@ -612,8 +704,12 @@ fun ButtonItem(
     onClick: () -> Unit
 ) {
     Card(
-        colors = CardDefaults.cardColors(containerColor = Color.Transparent),
-        modifier = Modifier.clickable { onClick() }
+        colors = CardDefaults.cardColors(
+            containerColor = Color.Transparent
+        ),
+        modifier = Modifier.clickable {
+            onClick()
+        }
     ) {
         Row(
             modifier = Modifier
@@ -622,7 +718,9 @@ fun ButtonItem(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(5.sdp())
         ) {
-            Column(Modifier.padding(end = 10.sdp())) {
+            Column(
+                modifier = Modifier.padding(end = 10.sdp())
+            ) {
                 IconItem(
                     icon = icon,
                     modifier = Modifier
@@ -630,22 +728,24 @@ fun ButtonItem(
                         .align(Alignment.CenterHorizontally)
                 )
             }
+
             Column(
-                Modifier
+                modifier = Modifier
                     .weight(1f)
                     .fillMaxWidth()
             ) {
                 title?.let {
                     Text(
-                        text = title,
+                        text = it,
                         fontSize = FontSize,
                         lineHeight = LineHeight,
                         fontWeight = FontWeight.Medium
                     )
                 }
+
                 summary?.let {
                     Text(
-                        text = summary,
+                        text = it,
                         fontSize = FontSize,
                         lineHeight = LineHeight,
                         style = MaterialTheme.typography.bodySmall,
