@@ -11,7 +11,7 @@ android {
     namespace = "com.remtrik.m3khelper"
 
     // Android 16
-    compileSdk = 36
+    compileSdk = 37
 
     defaultConfig {
         applicationId = "com.remtrik.m3khelper"
