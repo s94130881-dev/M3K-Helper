@@ -18,264 +18,45 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.io.File
 
-internal val BlockWindowsPath by lazy {
-    ShellUtils.fastCmd("readlink -fn /dev/block/bootdevice/by-name/win")
-}
-
 private const val TAG = "M3K: Commands"
-private const val WINDOWS_PARTITION = "/dev/block/by-name/win"
+
+private const val WINDOWS_PARTITION =
+    "/dev/block/by-name/win"
+
+private const val BOOT_PARTITION =
+    "/dev/block/bootdevice/by-name/boot"
+
 private const val SENSORS_PATH =
     "Windows/Windows/System32/Drivers/DriverData/QUALCOMM/fastRPC/vendor/etc/sensors"
-private const val MODEM_INF_PATTERN = "qcremotefs8150.inf_arm64_*"
 
-object RootCommandExecutor {
-    suspend fun exec(command: String): Shell.Result = withContext(Dispatchers.IO) {
-        try {
-            Shell.cmd(command).exec()
-        } catch (t: Throwable) {
-            Log.e(TAG, "RootCommandExecutor failed: ", t)
-            throw t
-        }
-    }
-}
+private const val MODEM_INF_PATTERN =
+    "qcremotefs8150.inf_arm64_*"
 
-abstract class Commands {
-    private val mutex = Mutex()
-
-    private fun Shell.Result?.toCommandResult(command: String = ""): CommandResult {
-        return this?.let {
-            CommandResult(
-                isSuccess = it.isSuccess,
-                output = it.out.toList(),
-                error = it.err.toList(),
-                command = command
-            )
-        } ?: CommandResult(
-            isSuccess = false,
-            output = listOf(R.string.mount_error_default.string()),
-            error = listOf(R.string.mount_error_default.string()),
-            command = command
-        )
-    }
-
-    private fun errorResult(message: String, command: String = ""): CommandResult = CommandResult(
-        isSuccess = false,
-        output = listOf(message),
-        error = listOf(message),
-        command = command
+internal val BlockWindowsPath by lazy {
+    ShellUtils.fastCmd(
+        "readlink -fn /dev/block/bootdevice/by-name/win"
     )
+}
 
-    suspend fun dumpBoot(type: ErrorType, where: BootBackupState): CommandResult =
+/*
+ * Executor de comandos root.
+ */
+object RootCommandExecutor {
+
+    suspend fun exec(command: String): Shell.Result =
         withContext(Dispatchers.IO) {
-            when (where) {
-                BootBackupState.WINDOWS -> {
-                    val ok = withMountedWindows(type) {
-                        val target = File("$SDCARD_PATH/Windows/boot.img").canonicalFile
-                        val cmd =
-                            "dd if=/dev/block/bootdevice/by-name/boot${device.slot} of=${target.path} bs=32M"
-                        RootCommandExecutor.exec(cmd)
-                        bootBackupStatus()
-                    }
-                    if (!ok) return@withContext errorResult(
-                        R.string.mount_error_default.string(),
-                        "mount"
-                    )
-                    null
-                }
-
-                BootBackupState.ANDROID -> {
-                    val target = File("$SDCARD_PATH/boot.img").canonicalFile
-                    val cmd =
-                        "dd if=/dev/block/bootdevice/by-name/boot${device.slot} of=${target.path}"
-                    RootCommandExecutor.exec(cmd).also { bootBackupStatus(forceMount = false) }
-                }
-
-                else -> return@withContext errorResult("Invalid 'where' arg: $where")
-            }.toCommandResult()
-        }
-
-    suspend fun mountWindows(): CommandResult = withContext(Dispatchers.IO) {
-        RootCommandExecutor.exec("mkdir -p $SDCARD_PATH/Windows")
-        RootCommandExecutor.exec(
-            "su -mm -c mount.ntfs $WINDOWS_PARTITION $SDCARD_PATH/Windows"
-        ).toCommandResult("mount.ntfs")
-    }
-
-    suspend fun umountWindows(): CommandResult = withContext(Dispatchers.IO) {
-        RootCommandExecutor.exec("su -mm -c umount $SDCARD_PATH/Windows")
-            .toCommandResult("umount")
-    }
-
-    suspend fun isMounted(): MountStatus = withContext(Dispatchers.IO) {
-        val result = Shell.cmd("mount | grep $BlockWindowsPath").exec()
-        if (result.isSuccess && result.out.isNotEmpty() && result.out[0].contains("Windows")) {
-            MountStatus.MOUNTED
-        } else {
-            MountStatus.NOT_MOUNTED
-        }
-    }
-
-    private suspend fun checkSensors(): Boolean = withContext(Dispatchers.IO) {
-        if (!device.currentDeviceCard.value.sensors) return@withContext true
-        var found = false
-        withMountedWindows(ErrorType.QUICKBOOT_ERROR) {
-            val out = ShellUtils.fastCmd("ls $SDCARD_PATH/$SENSORS_PATH/")
-            found = out.isNotEmpty()
-        }
-        found
-    }
-
-    suspend fun dumpSensors(): CommandResult = withContext(Dispatchers.IO) {
-        var res: Shell.Result? = null
-        withMountedWindows(ErrorType.QUICKBOOT_ERROR) {
-            res = RootCommandExecutor.exec(
-                "cp -r /vendor/etc/sensors/* $SDCARD_PATH/$SENSORS_PATH"
-            )
-        }
-        res.toCommandResult("cp sensors")
-    }
-
-    suspend fun dumpModem(): CommandResult = withContext(Dispatchers.IO) {
-        var res: Shell.Result? = null
-        withMountedWindows(ErrorType.QUICKBOOT_ERROR) {
-            val path = ShellUtils.fastCmd(
-                "find $SDCARD_PATH/Windows/Windows/System32/DriverStore/FileRepository -name $MODEM_INF_PATTERN"
-            )
-            if (path.isEmpty()) {
-                res = null
-                return@withMountedWindows
-            }
-            val cmd =
-                "dd if=/dev/block/bootdevice/by-name/modemst1 of=$path/bootmodem_fs1 bs=8388608 && " +
-                        "dd if=/dev/block/bootdevice/by-name/modemst2 of=$path/bootmodem_fs2 bs=8388608"
-            res = RootCommandExecutor.exec(cmd)
-        }
-        res.toCommandResult("dump modem")
-    }
-
-    suspend fun flashUEFI(uefiPath: String): CommandResult = withContext(Dispatchers.IO) {
-        val file = File(uefiPath).canonicalFile
-        val cmd = "dd if=${file.path} of=/dev/block/bootdevice/by-name/boot${device.slot} bs=32M"
-        RootCommandExecutor.exec(cmd).toCommandResult("flash UEFI")
-    }
-
-    suspend fun quickBoot(uefiPath: String): Unit = withContext(Dispatchers.IO) {
-        var manualReboot = false
-        val card = device.currentDeviceCard.value
-
-        if (!card.noMount) {
-            if (!File("$SDCARD_PATH/Windows/boot.img").exists()) {
-                val result = dumpBoot(ErrorType.QUICKBOOT_ERROR, BootBackupState.WINDOWS)
-                if (!result.isSuccess) {
-                    reportError(ErrorType.QUICKBOOT_ERROR, result)
-                    manualReboot = true
-                }
-            }
-
-            if (!card.noModem) {
-                val result = dumpModem()
-                if (!result.isSuccess) {
-                    reportError(ErrorType.QUICKBOOT_ERROR, result)
-                    manualReboot = true
-                }
-            }
-
-            if (card.sensors && !checkSensors()) {
-                val result = dumpSensors()
-                if (!result.isSuccess) {
-                    reportError(ErrorType.QUICKBOOT_ERROR, result)
-                    manualReboot = true
-                }
+            try {
+                Shell.cmd(command).exec()
+            } catch (t: Throwable) {
+                Log.e(TAG, "Root command failed", t)
+                throw t
             }
         }
-
-        if (!File("$SDCARD_PATH/boot.img").exists()) {
-            val result = dumpBoot(ErrorType.QUICKBOOT_ERROR, BootBackupState.ANDROID)
-            if (!result.isSuccess) {
-                reportError(ErrorType.QUICKBOOT_ERROR, result)
-                return@withContext
-            }
-        }
-
-        val result = flashUEFI(uefiPath)
-        if (!result.isSuccess) {
-            reportError(ErrorType.QUICKBOOT_ERROR, result)
-            return@withContext
-        }
-
-        if (!manualReboot) {
-            RootCommandExecutor.exec("svc power reboot")
-        } else {
-            withContext(Dispatchers.Main) {
-                Toast.makeText(
-                    M3KApp,
-                    R.string.manual_reboot_toast.string(),
-                    Toast.LENGTH_SHORT
-                ).show()
-            }
-        }
-    }
-
-    suspend fun withMountedWindows(
-        type: ErrorType,
-        block: suspend () -> Unit
-    ): Boolean = mutex.withLock {
-        val wasMounted = isMounted()
-        val noMount = device.currentDeviceCard.value.noMount
-        if (wasMounted == MountStatus.NOT_MOUNTED && !noMount) {
-            val res = mountWindows()
-            if (!res.isSuccess) {
-                reportError(type, res)
-                if (type != ErrorType.MOUNT_ERROR) return@withLock false
-            }
-        }
-        try {
-            block()
-        } finally {
-            if (wasMounted == MountStatus.NOT_MOUNTED && !noMount) {
-                val res = umountWindows()
-                if (!res.isSuccess) reportError(type, res)
-            }
-        }
-        return@withLock true
-    }
-
-    private fun reportError(type: ErrorType, result: CommandResult) {
-        val errorDetail = buildString {
-            if (result.command.isNotEmpty()) {
-                append("[${result.command}] ")
-            }
-            val stderr = result.error.firstOrNull()
-            val stdout = result.output.firstOrNull()
-            when {
-                stderr != null && stdout != null -> append("$stderr\n$stdout")
-                stderr != null -> append(stderr)
-                stdout != null -> append(stdout)
-                else -> append(M3KApp.getString(R.string.unknown_error))
-            }
-        }
-        Log.e(TAG, "Command failed: type=$type, command=${result.command}, error=$errorDetail")
-        val title = when (type) {
-            ErrorType.MOUNT_ERROR -> M3KApp.getString(R.string.mnt_error_title)
-            ErrorType.BOOTBACKUP_ERROR -> M3KApp.getString(R.string.backupboot_error)
-            ErrorType.QUICKBOOT_ERROR -> M3KApp.getString(R.string.quickboot_error_title)
-        }
-        commandError.value = com.remtrik.m3khelper.util.variables.CommandError(
-            type = type,
-            title = title,
-            message = errorDetail
-        )
-    }
 }
 
-fun Context.restart() {
-    runCatching {
-        packageManager.getLaunchIntentForPackage(packageName)?.let {
-            startActivity(Intent.makeRestartActivityTask(it.component))
-        }
-    }.onFailure { e -> Log.e("M3K Helper", "restart failed", e) }
-}
-
+/*
+ * Resultado de uma operação.
+ */
 data class CommandResult(
     val isSuccess: Boolean,
     val output: List<String>,
@@ -283,8 +64,742 @@ data class CommandResult(
     val command: String = ""
 )
 
-enum class ErrorType { MOUNT_ERROR, BOOTBACKUP_ERROR, QUICKBOOT_ERROR }
+/*
+ * Estados de boot.
+ *
+ * IMPORTANTE:
+ * Este projeto não grava UEFI.
+ *
+ * ANDROID:
+ *   Inicialização normal do Android.
+ *
+ * WINDOWS:
+ *   Depende de um bootloader/boot-chain compatível
+ *   já existente no dispositivo.
+ */
+enum class BootTarget {
+    ANDROID,
+    WINDOWS
+}
 
-enum class MountStatus { NOT_MOUNTED, MOUNTED }
+/*
+ * Gerenciador de boot sem UEFI.
+ *
+ * Esta classe NÃO cria um bootloader.
+ * Ela apenas fornece uma interface para o mecanismo
+ * de boot que eventualmente será implementado para
+ * o dispositivo.
+ */
+object BootManager {
 
-enum class BootBackupState { NONE, ANDROID, WINDOWS, BOTH }
+    private const val TARGET_FILE =
+        "$SDCARD_PATH/windows_boot_target"
+
+    suspend fun getTarget(): BootTarget =
+        withContext(Dispatchers.IO) {
+
+            val result = RootCommandExecutor.exec(
+                "cat $TARGET_FILE 2>/dev/null"
+            )
+
+            if (!result.isSuccess || result.out.isEmpty()) {
+                return@withContext BootTarget.ANDROID
+            }
+
+            when (result.out.firstOrNull()?.trim()?.lowercase()) {
+                "windows" -> BootTarget.WINDOWS
+                else -> BootTarget.ANDROID
+            }
+        }
+
+    suspend fun setTarget(target: BootTarget): CommandResult =
+        withContext(Dispatchers.IO) {
+
+            val value = when (target) {
+                BootTarget.ANDROID -> "android"
+                BootTarget.WINDOWS -> "windows"
+            }
+
+            RootCommandExecutor.exec(
+                "mkdir -p $SDCARD_PATH && " +
+                    "printf '%s\\n' '$value' > $TARGET_FILE"
+            ).toCommandResult("set boot target")
+        }
+
+    /*
+     * Aqui NÃO existe:
+     *
+     * dd if=UEFI.img of=/boot
+     *
+     * Portanto esta implementação não substitui
+     * o boot Android por uma imagem UEFI.
+     */
+    suspend fun prepareWindowsBoot(): CommandResult =
+        withContext(Dispatchers.IO) {
+
+            val windowsPartition =
+                File(WINDOWS_PARTITION)
+
+            if (!windowsPartition.exists()) {
+                return@withContext CommandResult(
+                    false,
+                    listOf("Windows partition not found"),
+                    listOf("Partition $WINDOWS_PARTITION does not exist"),
+                    "prepare Windows boot"
+                )
+            }
+
+            setTarget(BootTarget.WINDOWS)
+        }
+
+    suspend fun prepareAndroidBoot(): CommandResult =
+        withContext(Dispatchers.IO) {
+            setTarget(BootTarget.ANDROID)
+        }
+
+    /*
+     * Reinicialização normal.
+     *
+     * O Android/firmware decide o próximo estágio.
+     * Esta função NÃO consegue criar Windows boot por si só.
+     */
+    suspend fun reboot(): CommandResult =
+        withContext(Dispatchers.IO) {
+            RootCommandExecutor.exec(
+                "sync && svc power reboot"
+            ).toCommandResult("reboot")
+        }
+}
+
+/*
+ * Comandos principais.
+ */
+abstract class Commands {
+
+    private val mutex = Mutex()
+
+    private fun Shell.Result?.toCommandResult(
+        command: String = ""
+    ): CommandResult {
+
+        return this?.let {
+
+            CommandResult(
+                isSuccess = it.isSuccess,
+                output = it.out.toList(),
+                error = it.err.toList(),
+                command = command
+            )
+
+        } ?: CommandResult(
+            isSuccess = false,
+            output = listOf(
+                R.string.mount_error_default.string()
+            ),
+            error = listOf(
+                R.string.mount_error_default.string()
+            ),
+            command = command
+        )
+    }
+
+    private fun errorResult(
+        message: String,
+        command: String = ""
+    ) = CommandResult(
+        isSuccess = false,
+        output = listOf(message),
+        error = listOf(message),
+        command = command
+    )
+
+    /*
+     * Backup do boot Android.
+     *
+     * Não grava nada na partição boot.
+     */
+    suspend fun dumpBoot(
+        type: ErrorType,
+        where: BootBackupState
+    ): CommandResult =
+        withContext(Dispatchers.IO) {
+
+            when (where) {
+
+                BootBackupState.WINDOWS -> {
+
+                    val ok = withMountedWindows(type) {
+
+                        val target =
+                            File(
+                                "$SDCARD_PATH/Windows/boot.img"
+                            ).canonicalFile
+
+                        val cmd =
+                            "dd " +
+                                "if=$BOOT_PARTITION${device.slot} " +
+                                "of=${target.path} " +
+                                "bs=32M"
+
+                        RootCommandExecutor.exec(cmd)
+
+                        bootBackupStatus()
+                    }
+
+                    if (!ok) {
+                        return@withContext errorResult(
+                            R.string.mount_error_default.string(),
+                            "mount"
+                        )
+                    }
+
+                    null
+                }
+
+                BootBackupState.ANDROID -> {
+
+                    val target =
+                        File(
+                            "$SDCARD_PATH/boot.img"
+                        ).canonicalFile
+
+                    val cmd =
+                        "dd " +
+                            "if=$BOOT_PARTITION${device.slot} " +
+                            "of=${target.path} " +
+                            "bs=32M"
+
+                    RootCommandExecutor.exec(cmd)
+                        .also {
+                            bootBackupStatus(
+                                forceMount = false
+                            )
+                        }
+                }
+
+                else -> {
+                    return@withContext errorResult(
+                        "Invalid 'where' arg: $where"
+                    )
+                }
+            }.toCommandResult()
+        }
+
+    /*
+     * Monta a partição Windows.
+     */
+    suspend fun mountWindows(): CommandResult =
+        withContext(Dispatchers.IO) {
+
+            RootCommandExecutor.exec(
+                "mkdir -p $SDCARD_PATH/Windows"
+            )
+
+            RootCommandExecutor.exec(
+                "su -mm -c " +
+                    "\"mount.ntfs " +
+                    "$WINDOWS_PARTITION " +
+                    "$SDCARD_PATH/Windows\""
+            ).toCommandResult("mount.ntfs")
+        }
+
+    /*
+     * Desmonta Windows.
+     */
+    suspend fun umountWindows(): CommandResult =
+        withContext(Dispatchers.IO) {
+
+            RootCommandExecutor.exec(
+                "su -mm -c " +
+                    "\"umount $SDCARD_PATH/Windows\""
+            ).toCommandResult("umount")
+        }
+
+    /*
+     * Verifica montagem.
+     */
+    suspend fun isMounted(): MountStatus =
+        withContext(Dispatchers.IO) {
+
+            val result = Shell.cmd(
+                "mount | grep '$BlockWindowsPath'"
+            ).exec()
+
+            if (
+                result.isSuccess &&
+                result.out.isNotEmpty() &&
+                result.out.any {
+                    it.contains("Windows")
+                }
+            ) {
+                MountStatus.MOUNTED
+            } else {
+                MountStatus.NOT_MOUNTED
+            }
+        }
+
+    /*
+     * Verifica drivers de sensores.
+     */
+    private suspend fun checkSensors(): Boolean =
+        withContext(Dispatchers.IO) {
+
+            if (
+                !device.currentDeviceCard.value.sensors
+            ) {
+                return@withContext true
+            }
+
+            var found = false
+
+            withMountedWindows(
+                ErrorType.QUICKBOOT_ERROR
+            ) {
+
+                val out = ShellUtils.fastCmd(
+                    "ls $SDCARD_PATH/$SENSORS_PATH/ 2>/dev/null"
+                )
+
+                found = out.isNotEmpty()
+            }
+
+            found
+        }
+
+    /*
+     * Copia sensores para Windows.
+     */
+    suspend fun dumpSensors(): CommandResult =
+        withContext(Dispatchers.IO) {
+
+            var res: Shell.Result? = null
+
+            withMountedWindows(
+                ErrorType.QUICKBOOT_ERROR
+            ) {
+
+                RootCommandExecutor.exec(
+                    "mkdir -p $SDCARD_PATH/$SENSORS_PATH"
+                )
+
+                res = RootCommandExecutor.exec(
+                    "cp -r /vendor/etc/sensors/* " +
+                        "$SDCARD_PATH/$SENSORS_PATH/"
+                )
+            }
+
+            res.toCommandResult(
+                "cp sensors"
+            )
+        }
+
+    /*
+     * Copia modem para Windows.
+     */
+    suspend fun dumpModem(): CommandResult =
+        withContext(Dispatchers.IO) {
+
+            var res: Shell.Result? = null
+
+            withMountedWindows(
+                ErrorType.QUICKBOOT_ERROR
+            ) {
+
+                val path = ShellUtils.fastCmd(
+                    "find " +
+                        "$SDCARD_PATH/Windows/Windows/" +
+                        "System32/DriverStore/" +
+                        "FileRepository " +
+                        "-name '$MODEM_INF_PATTERN' " +
+                        "| head -n 1"
+                )
+
+                if (path.isEmpty()) {
+                    return@withMountedWindows
+                }
+
+                val cmd =
+                    "dd " +
+                        "if=/dev/block/bootdevice/by-name/modemst1 " +
+                        "of=$path/bootmodem_fs1 " +
+                        "bs=8388608 && " +
+                    "dd " +
+                        "if=/dev/block/bootdevice/by-name/modemst2 " +
+                        "of=$path/bootmodem_fs2 " +
+                        "bs=8388608"
+
+                res = RootCommandExecutor.exec(cmd)
+            }
+
+            res.toCommandResult(
+                "dump modem"
+            )
+        }
+
+    /*
+     * Prepara o sistema para Windows SEM UEFI.
+     *
+     * Não existe flashUEFI().
+     */
+    suspend fun prepareWindowsBoot(): CommandResult =
+        withContext(Dispatchers.IO) {
+
+            val card =
+                device.currentDeviceCard.value
+
+            if (!card.noMount) {
+
+                if (
+                    !File(
+                        "$SDCARD_PATH/Windows/boot.img"
+                    ).exists()
+                ) {
+
+                    val result = dumpBoot(
+                        ErrorType.QUICKBOOT_ERROR,
+                        BootBackupState.WINDOWS
+                    )
+
+                    if (!result.isSuccess) {
+                        reportError(
+                            ErrorType.QUICKBOOT_ERROR,
+                            result
+                        )
+
+                        return@withContext result
+                    }
+                }
+
+                if (!card.noModem) {
+
+                    val result = dumpModem()
+
+                    if (!result.isSuccess) {
+                        reportError(
+                            ErrorType.QUICKBOOT_ERROR,
+                            result
+                        )
+
+                        return@withContext result
+                    }
+                }
+
+                if (
+                    card.sensors &&
+                    !checkSensors()
+                ) {
+
+                    val result = dumpSensors()
+
+                    if (!result.isSuccess) {
+                        reportError(
+                            ErrorType.QUICKBOOT_ERROR,
+                            result
+                        )
+
+                        return@withContext result
+                    }
+                }
+            }
+
+            /*
+             * Mantém backup do boot Android.
+             */
+            if (
+                !File(
+                    "$SDCARD_PATH/boot.img"
+                ).exists()
+            ) {
+
+                val result = dumpBoot(
+                    ErrorType.QUICKBOOT_ERROR,
+                    BootBackupState.ANDROID
+                )
+
+                if (!result.isSuccess) {
+
+                    reportError(
+                        ErrorType.QUICKBOOT_ERROR,
+                        result
+                    )
+
+                    return@withContext result
+                }
+            }
+
+            /*
+             * Apenas seleciona Windows como destino lógico.
+             *
+             * NÃO altera a partição boot.
+             */
+            val result =
+                BootManager.prepareWindowsBoot()
+
+            if (!result.isSuccess) {
+
+                reportError(
+                    ErrorType.QUICKBOOT_ERROR,
+                    result
+                )
+            }
+
+            result
+        }
+
+    /*
+     * Seleciona Android como destino.
+     */
+    suspend fun prepareAndroidBoot(): CommandResult =
+        withContext(Dispatchers.IO) {
+
+            val result =
+                BootManager.prepareAndroidBoot()
+
+            if (!result.isSuccess) {
+
+                reportError(
+                    ErrorType.QUICKBOOT_ERROR,
+                    result
+                )
+            }
+
+            result
+        }
+
+    /*
+     * Quick boot SEM UEFI.
+     *
+     * Atenção:
+     * o aplicativo somente prepara a seleção.
+     * O firmware precisa implementar essa seleção.
+     */
+    suspend fun quickBoot(): Unit =
+        withContext(Dispatchers.IO) {
+
+            val result =
+                prepareWindowsBoot()
+
+            if (!result.isSuccess) {
+                return@withContext
+            }
+
+            /*
+             * Sem bootloader compatível, reiniciar aqui
+             * simplesmente volta para o Android.
+             */
+            val rebootResult =
+                BootManager.reboot()
+
+            if (!rebootResult.isSuccess) {
+
+                reportError(
+                    ErrorType.QUICKBOOT_ERROR,
+                    rebootResult
+                )
+
+                return@withContext
+            }
+        }
+
+    /*
+     * Executa uma operação com Windows montado.
+     */
+    suspend fun withMountedWindows(
+        type: ErrorType,
+        block: suspend () -> Unit
+    ): Boolean =
+        mutex.withLock {
+
+            val wasMounted =
+                isMounted()
+
+            val noMount =
+                device.currentDeviceCard.value.noMount
+
+            if (
+                wasMounted == MountStatus.NOT_MOUNTED &&
+                !noMount
+            ) {
+
+                val res =
+                    mountWindows()
+
+                if (!res.isSuccess) {
+
+                    reportError(
+                        type,
+                        res
+                    )
+
+                    if (
+                        type != ErrorType.MOUNT_ERROR
+                    ) {
+                        return@withLock false
+                    }
+                }
+            }
+
+            try {
+
+                block()
+
+            } finally {
+
+                if (
+                    wasMounted ==
+                    MountStatus.NOT_MOUNTED &&
+                    !noMount
+                ) {
+
+                    val res =
+                        umountWindows()
+
+                    if (!res.isSuccess) {
+
+                        reportError(
+                            type,
+                            res
+                        )
+                    }
+                }
+            }
+
+            true
+        }
+
+    /*
+     * Relatório de erro.
+     */
+    private fun reportError(
+        type: ErrorType,
+        result: CommandResult
+    ) {
+
+        val errorDetail =
+            buildString {
+
+                if (
+                    result.command.isNotEmpty()
+                ) {
+                    append(
+                        "[${result.command}] "
+                    )
+                }
+
+                val stderr =
+                    result.error.firstOrNull()
+
+                val stdout =
+                    result.output.firstOrNull()
+
+                when {
+
+                    stderr != null &&
+                        stdout != null -> {
+
+                        append(
+                            "$stderr\n$stdout"
+                        )
+                    }
+
+                    stderr != null -> {
+                        append(stderr)
+                    }
+
+                    stdout != null -> {
+                        append(stdout)
+                    }
+
+                    else -> {
+                        append(
+                            M3KApp.getString(
+                                R.string.unknown_error
+                            )
+                        )
+                    }
+                }
+            }
+
+        Log.e(
+            TAG,
+            "Command failed: " +
+                "type=$type, " +
+                "command=${result.command}, " +
+                "error=$errorDetail"
+        )
+
+        val title =
+            when (type) {
+
+                ErrorType.MOUNT_ERROR ->
+                    M3KApp.getString(
+                        R.string.mnt_error_title
+                    )
+
+                ErrorType.BOOTBACKUP_ERROR ->
+                    M3KApp.getString(
+                        R.string.backupboot_error
+                    )
+
+                ErrorType.QUICKBOOT_ERROR ->
+                    M3KApp.getString(
+                        R.string.quickboot_error_title
+                    )
+            }
+
+        commandError.value =
+            com.remtrik.m3khelper.util.variables.CommandError(
+                type = type,
+                title = title,
+                message = errorDetail
+            )
+    }
+}
+
+/*
+ * Reinicia o aplicativo.
+ */
+fun Context.restart() {
+
+    runCatching {
+
+        packageManager
+            .getLaunchIntentForPackage(
+                packageName
+            )
+            ?.let {
+
+                startActivity(
+                    Intent.makeRestartActivityTask(
+                        it.component
+                    )
+                )
+            }
+
+    }.onFailure { e ->
+
+        Log.e(
+            "M3K Helper",
+            "restart failed",
+            e
+        )
+    }
+}
+
+enum class ErrorType {
+    MOUNT_ERROR,
+    BOOTBACKUP_ERROR,
+    QUICKBOOT_ERROR
+}
+
+enum class MountStatus {
+    NOT_MOUNTED,
+    MOUNTED
+}
+
+enum class BootBackupState {
+    NONE,
+    ANDROID,
+    WINDOWS,
+    BOTH
+}
