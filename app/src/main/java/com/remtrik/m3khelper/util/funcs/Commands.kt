@@ -3,7 +3,6 @@ package com.remtrik.m3khelper.util.funcs
 import android.content.Context
 import android.content.Intent
 import android.util.Log
-import android.widget.Toast
 import com.remtrik.m3khelper.M3KApp
 import com.remtrik.m3khelper.R
 import com.remtrik.m3khelper.util.variables.SDCARD_PATH
@@ -32,9 +31,57 @@ private const val SENSORS_PATH =
 private const val MODEM_INF_PATTERN =
     "qcremotefs8150.inf_arm64_*"
 
+/*
+ * SDCARD_PATH pode não ser const.
+ * Portanto o caminho completo precisa ser calculado em runtime.
+ */
+private val WINDOWS_BOOT_TARGET: String
+    get() = "$SDCARD_PATH/windows_boot_target"
+
 internal val BlockWindowsPath by lazy {
     ShellUtils.fastCmd(
         "readlink -fn /dev/block/bootdevice/by-name/win"
+    )
+}
+
+/*
+ * Resultado de uma operação.
+ */
+data class CommandResult(
+    val isSuccess: Boolean,
+    val output: List<String>,
+    val error: List<String>,
+    val command: String = ""
+)
+
+/*
+ * Converte Shell.Result em CommandResult.
+ *
+ * Deve ser top-level porque é utilizado por BootManager
+ * e também por Commands.
+ */
+private fun Shell.Result?.toCommandResult(
+    command: String = ""
+): CommandResult {
+
+    return this?.let {
+
+        CommandResult(
+            isSuccess = it.isSuccess,
+            output = it.out.toList(),
+            error = it.err.toList(),
+            command = command
+        )
+
+    } ?: CommandResult(
+        isSuccess = false,
+        output = listOf(
+            R.string.mount_error_default.string()
+        ),
+        error = listOf(
+            R.string.mount_error_default.string()
+        ),
+        command = command
     )
 }
 
@@ -55,27 +102,7 @@ object RootCommandExecutor {
 }
 
 /*
- * Resultado de uma operação.
- */
-data class CommandResult(
-    val isSuccess: Boolean,
-    val output: List<String>,
-    val error: List<String>,
-    val command: String = ""
-)
-
-/*
  * Estados de boot.
- *
- * IMPORTANTE:
- * Este projeto não grava UEFI.
- *
- * ANDROID:
- *   Inicialização normal do Android.
- *
- * WINDOWS:
- *   Depende de um bootloader/boot-chain compatível
- *   já existente no dispositivo.
  */
 enum class BootTarget {
     ANDROID,
@@ -83,36 +110,36 @@ enum class BootTarget {
 }
 
 /*
- * Gerenciador de boot sem UEFI.
+ * Gerenciador de boot.
  *
- * Esta classe NÃO cria um bootloader.
- * Ela apenas fornece uma interface para o mecanismo
- * de boot que eventualmente será implementado para
- * o dispositivo.
+ * Não cria nem grava UEFI.
  */
 object BootManager {
-
-    private const val TARGET_FILE =
-        "$SDCARD_PATH/windows_boot_target"
 
     suspend fun getTarget(): BootTarget =
         withContext(Dispatchers.IO) {
 
             val result = RootCommandExecutor.exec(
-                "cat $TARGET_FILE 2>/dev/null"
+                "cat \"$WINDOWS_BOOT_TARGET\" 2>/dev/null"
             )
 
             if (!result.isSuccess || result.out.isEmpty()) {
                 return@withContext BootTarget.ANDROID
             }
 
-            when (result.out.firstOrNull()?.trim()?.lowercase()) {
+            when (
+                result.out.firstOrNull()
+                    ?.trim()
+                    ?.lowercase()
+            ) {
                 "windows" -> BootTarget.WINDOWS
                 else -> BootTarget.ANDROID
             }
         }
 
-    suspend fun setTarget(target: BootTarget): CommandResult =
+    suspend fun setTarget(
+        target: BootTarget
+    ): CommandResult =
         withContext(Dispatchers.IO) {
 
             val value = when (target) {
@@ -121,19 +148,13 @@ object BootManager {
             }
 
             RootCommandExecutor.exec(
-                "mkdir -p $SDCARD_PATH && " +
-                    "printf '%s\\n' '$value' > $TARGET_FILE"
-            ).toCommandResult("set boot target")
+                "mkdir -p \"$SDCARD_PATH\" && " +
+                    "printf '%s\\n' '$value' > \"$WINDOWS_BOOT_TARGET\""
+            ).toCommandResult(
+                "set boot target"
+            )
         }
 
-    /*
-     * Aqui NÃO existe:
-     *
-     * dd if=UEFI.img of=/boot
-     *
-     * Portanto esta implementação não substitui
-     * o boot Android por uma imagem UEFI.
-     */
     suspend fun prepareWindowsBoot(): CommandResult =
         withContext(Dispatchers.IO) {
 
@@ -141,10 +162,13 @@ object BootManager {
                 File(WINDOWS_PARTITION)
 
             if (!windowsPartition.exists()) {
+
                 return@withContext CommandResult(
                     false,
                     listOf("Windows partition not found"),
-                    listOf("Partition $WINDOWS_PARTITION does not exist"),
+                    listOf(
+                        "Partition $WINDOWS_PARTITION does not exist"
+                    ),
                     "prepare Windows boot"
                 )
             }
@@ -157,17 +181,14 @@ object BootManager {
             setTarget(BootTarget.ANDROID)
         }
 
-    /*
-     * Reinicialização normal.
-     *
-     * O Android/firmware decide o próximo estágio.
-     * Esta função NÃO consegue criar Windows boot por si só.
-     */
     suspend fun reboot(): CommandResult =
         withContext(Dispatchers.IO) {
+
             RootCommandExecutor.exec(
                 "sync && svc power reboot"
-            ).toCommandResult("reboot")
+            ).toCommandResult(
+                "reboot"
+            )
         }
 }
 
@@ -177,31 +198,6 @@ object BootManager {
 abstract class Commands {
 
     private val mutex = Mutex()
-
-    private fun Shell.Result?.toCommandResult(
-        command: String = ""
-    ): CommandResult {
-
-        return this?.let {
-
-            CommandResult(
-                isSuccess = it.isSuccess,
-                output = it.out.toList(),
-                error = it.err.toList(),
-                command = command
-            )
-
-        } ?: CommandResult(
-            isSuccess = false,
-            output = listOf(
-                R.string.mount_error_default.string()
-            ),
-            error = listOf(
-                R.string.mount_error_default.string()
-            ),
-            command = command
-        )
-    }
 
     private fun errorResult(
         message: String,
@@ -214,9 +210,7 @@ abstract class Commands {
     )
 
     /*
-     * Backup do boot Android.
-     *
-     * Não grava nada na partição boot.
+     * Backup do boot Android/Windows.
      */
     suspend fun dumpBoot(
         type: ErrorType,
@@ -286,13 +280,13 @@ abstract class Commands {
         }
 
     /*
-     * Monta a partição Windows.
+     * Monta Windows.
      */
     suspend fun mountWindows(): CommandResult =
         withContext(Dispatchers.IO) {
 
             RootCommandExecutor.exec(
-                "mkdir -p $SDCARD_PATH/Windows"
+                "mkdir -p \"$SDCARD_PATH/Windows\""
             )
 
             RootCommandExecutor.exec(
@@ -300,7 +294,9 @@ abstract class Commands {
                     "\"mount.ntfs " +
                     "$WINDOWS_PARTITION " +
                     "$SDCARD_PATH/Windows\""
-            ).toCommandResult("mount.ntfs")
+            ).toCommandResult(
+                "mount.ntfs"
+            )
         }
 
     /*
@@ -312,7 +308,9 @@ abstract class Commands {
             RootCommandExecutor.exec(
                 "su -mm -c " +
                     "\"umount $SDCARD_PATH/Windows\""
-            ).toCommandResult("umount")
+            ).toCommandResult(
+                "umount"
+            )
         }
 
     /*
@@ -339,7 +337,7 @@ abstract class Commands {
         }
 
     /*
-     * Verifica drivers de sensores.
+     * Verifica sensores.
      */
     private suspend fun checkSensors(): Boolean =
         withContext(Dispatchers.IO) {
@@ -367,7 +365,7 @@ abstract class Commands {
         }
 
     /*
-     * Copia sensores para Windows.
+     * Copia sensores.
      */
     suspend fun dumpSensors(): CommandResult =
         withContext(Dispatchers.IO) {
@@ -394,7 +392,7 @@ abstract class Commands {
         }
 
     /*
-     * Copia modem para Windows.
+     * Copia modem.
      */
     suspend fun dumpModem(): CommandResult =
         withContext(Dispatchers.IO) {
@@ -437,9 +435,7 @@ abstract class Commands {
         }
 
     /*
-     * Prepara o sistema para Windows SEM UEFI.
-     *
-     * Não existe flashUEFI().
+     * Prepara Windows.
      */
     suspend fun prepareWindowsBoot(): CommandResult =
         withContext(Dispatchers.IO) {
@@ -461,6 +457,7 @@ abstract class Commands {
                     )
 
                     if (!result.isSuccess) {
+
                         reportError(
                             ErrorType.QUICKBOOT_ERROR,
                             result
@@ -475,6 +472,7 @@ abstract class Commands {
                     val result = dumpModem()
 
                     if (!result.isSuccess) {
+
                         reportError(
                             ErrorType.QUICKBOOT_ERROR,
                             result
@@ -492,6 +490,7 @@ abstract class Commands {
                     val result = dumpSensors()
 
                     if (!result.isSuccess) {
+
                         reportError(
                             ErrorType.QUICKBOOT_ERROR,
                             result
@@ -528,9 +527,7 @@ abstract class Commands {
             }
 
             /*
-             * Apenas seleciona Windows como destino lógico.
-             *
-             * NÃO altera a partição boot.
+             * Seleção lógica de Windows.
              */
             val result =
                 BootManager.prepareWindowsBoot()
@@ -547,7 +544,7 @@ abstract class Commands {
         }
 
     /*
-     * Seleciona Android como destino.
+     * Seleciona Android.
      */
     suspend fun prepareAndroidBoot(): CommandResult =
         withContext(Dispatchers.IO) {
@@ -567,11 +564,7 @@ abstract class Commands {
         }
 
     /*
-     * Quick boot SEM UEFI.
-     *
-     * Atenção:
-     * o aplicativo somente prepara a seleção.
-     * O firmware precisa implementar essa seleção.
+     * Quick boot.
      */
     suspend fun quickBoot(): Unit =
         withContext(Dispatchers.IO) {
@@ -583,10 +576,6 @@ abstract class Commands {
                 return@withContext
             }
 
-            /*
-             * Sem bootloader compatível, reiniciar aqui
-             * simplesmente volta para o Android.
-             */
             val rebootResult =
                 BootManager.reboot()
 
@@ -602,7 +591,7 @@ abstract class Commands {
         }
 
     /*
-     * Executa uma operação com Windows montado.
+     * Executa operação com Windows montado.
      */
     suspend fun withMountedWindows(
         type: ErrorType,
@@ -696,7 +685,6 @@ abstract class Commands {
 
                     stderr != null &&
                         stdout != null -> {
-
                         append(
                             "$stderr\n$stdout"
                         )
