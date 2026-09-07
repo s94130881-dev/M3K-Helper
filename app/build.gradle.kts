@@ -10,47 +10,51 @@ plugins {
 android {
     namespace = "com.remtrik.m3khelper"
 
-    // Android 16
-    compileSdk = 37
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.remtrik.m3khelper"
 
-        // Android 10+
         minSdk = 29
-
-        // Android 16
         targetSdk = 36
 
-        versionCode = 68
-        versionName = "6.3.0-TFDID"
+        versionCode = 69
+        versionName = "6.3.0"
 
         testInstrumentationRunner =
             "androidx.test.runner.AndroidJUnitRunner"
     }
 
-    // Galaxy A07 4G = ARM64
+    /*
+     * NÃO usar splits ABI.
+     *
+     * O APK será universal e poderá ser instalado
+     * normalmente em aparelhos ARM64.
+     */
     splits {
         abi {
-            isEnable = true
-
-            reset()
-
-            include(
-                "arm64-v8a"
-            )
+            isEnable = false
         }
     }
 
     buildTypes {
+
         debug {
             isMinifyEnabled = false
             isShrinkResources = false
+
+            applicationIdSuffix = ".debug"
+            versionNameSuffix = "-debug"
         }
 
         release {
-            isMinifyEnabled = true
-            isShrinkResources = true
+            /*
+             * Deixe R8 desligado inicialmente.
+             * Depois que o APK estiver funcionando,
+             * pode ser reativado.
+             */
+            isMinifyEnabled = false
+            isShrinkResources = false
 
             proguardFiles(
                 getDefaultProguardFile(
@@ -63,11 +67,9 @@ android {
         }
     }
 
-    buildFeatures {
-        compose = true
-        buildConfig = true
-    }
-
+    /*
+     * Kotlin / Java 21
+     */
     kotlin {
         jvmToolchain(21)
 
@@ -83,6 +85,17 @@ android {
         targetCompatibility = JavaVersion.VERSION_21
     }
 
+    /*
+     * Jetpack Compose
+     */
+    buildFeatures {
+        compose = true
+        buildConfig = true
+    }
+
+    /*
+     * Lint
+     */
     lint {
         disable += listOf(
             "MissingTranslation",
@@ -97,6 +110,9 @@ android {
         checkReleaseBuilds = false
     }
 
+    /*
+     * Packaging
+     */
     packaging {
         jniLibs {
             useLegacyPackaging = false
@@ -109,41 +125,43 @@ android {
         }
     }
 
+    /*
+     * Nome dos APKs.
+     */
     androidComponents {
         onVariants { variant ->
 
             variant.outputs.forEach { output ->
 
-                val abi = output.filters
-                    .find {
-                        it.filterType ==
-                            com.android.build.api.variant
-                                .FilterConfiguration
-                                .FilterType
-                                .ABI
-                    }
-                    ?.identifier
-
                 output.outputFileName =
-                    "M3K_Helper_v" +
-                        "${defaultConfig.versionName}_" +
-                        "${defaultConfig.versionCode}-" +
+                    "M3K-Helper-" +
                         "${variant.name}-" +
-                        "${abi ?: "all"}.apk"
+                        "v${defaultConfig.versionName}-" +
+                        "${defaultConfig.versionCode}.apk"
             }
         }
     }
 
+    /*
+     * Não colocar informações desnecessárias
+     * de dependências dentro do APK.
+     */
     dependenciesInfo {
         includeInApk = false
         includeInBundle = false
     }
 
+    /*
+     * Configuração de idiomas.
+     */
     androidResources {
         generateLocaleConfig = true
     }
 }
 
+/*
+ * KSP
+ */
 ksp {
     arg(
         "compose-destinations.defaultTransitions",
@@ -154,7 +172,7 @@ ksp {
 dependencies {
 
     // ========================================
-    // AndroidX / Compose
+    // ANDROIDX / COMPOSE
     // ========================================
 
     implementation(
@@ -191,7 +209,7 @@ dependencies {
 
 
     // ========================================
-    // Navigation
+    // NAVIGATION
     // ========================================
 
     implementation(
@@ -234,7 +252,7 @@ dependencies {
 
 
     // ========================================
-    // Kotlin Coroutines
+    // COROUTINES
     // ========================================
 
     implementation(
@@ -243,7 +261,7 @@ dependencies {
 
 
     // ========================================
-    // Material
+    // MATERIAL
     // ========================================
 
     implementation(
@@ -256,7 +274,7 @@ dependencies {
 
 
     // ========================================
-    // OkHttp
+    // OKHTTP
     // ========================================
 
     implementation(
